@@ -1,0 +1,35 @@
+{
+  "name": "typenow",
+  "private": true,
+  "workspaces": [
+    "packages/engine",
+    "packages/language-packs"
+  ],
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:engine && npm run test:language-packs && npm run test:app",
+    "test:app": "vitest run src",
+    "test:e2e": "npm run build && playwright test",
+    "test:engine": "npm --workspace @typenow/engine test",
+    "test:language-packs": "npm --workspace @typenow/language-packs test"
+  },
+  "dependencies": {
+    "@typenow/engine": "*",
+    "@typenow/language-packs": "*",
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "fake-indexeddb": "^6.2.4",
+    "typescript": "^5.8.3",
+    "vitest": "^5.0.3"
+  }
+}

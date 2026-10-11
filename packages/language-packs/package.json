@@ -1,0 +1,13 @@
+{
+  "name": "@typenow/language-packs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./en": "./src/en/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run src"
+  }
+}

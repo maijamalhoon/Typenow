@@ -1,0 +1,41 @@
+English word-list data
+======================
+
+The Type now English language pack contains selections derived from the
+Alt12Dicts word-list package, version 2020.12.07, by Alan Beale and packaged
+by Kevin Atkinson:
+
+  https://github.com/en-wl/wordlist/tree/v1/alt12dicts
+
+The Alt12Dicts README states:
+
+  "All of these files have been explicitly placed in the Public Domain by
+  Alan Beale."
+
+This is the source's stated rights dedication; the source does not name a
+separate SPDX identifier or attach additional license terms.
+
+Standard vocabulary
+-------------------
+
+Source: alt12dicts/2of12full.txt
+  https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of12full.txt
+Included filtered data: packages/language-packs/src/en/words.json
+Selection: lowercase ASCII entries of 2–9 letters. Exact entries listed in
+packages/language-packs/src/en/BLOCKLIST.json are excluded at runtime.
+
+Kids vocabulary
+---------------
+
+Source: alt12dicts/2of4brif.txt
+  https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of4brif.txt
+Included source copy: packages/language-packs/src/en/2of4brif-source.txt
+Included filtered data: packages/language-packs/src/en/kids-words.json
+Selection: lowercase ASCII entries of 2–6 letters also present in the
+standard 2of12full selection. Exact entries listed in
+packages/language-packs/src/en/BLOCKLIST.json are excluded at runtime.
+
+The same Alt12Dicts Public Domain dedication applies to both source files.
+Letter and bigram statistics are computed from the filtered standard
+vocabulary. The blocklist is editorial filtering maintained by this project;
+it does not change the source's rights status.
