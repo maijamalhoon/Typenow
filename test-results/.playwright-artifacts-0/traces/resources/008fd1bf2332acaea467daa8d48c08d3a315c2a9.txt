@@ -1,5 +1,0 @@
-:HL["/_next/static/chunks/39eoex9vfd2t8.css","style"]
-:HL["/_next/static/media/SourceSans3_Variable-s.p.3qt9iekxw2qnx.ttf","font",{"crossOrigin":"","type":"font/ttf"}]
-2:[["children",{"s":"__PAGE__","h":160}]]
-1:[["children",{"s":"history","h":96,"c":"$Q2"}]]
-0:{"b":"F6RT9PUHsu37UczbQkqlT","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
