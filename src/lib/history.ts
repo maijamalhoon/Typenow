@@ -251,6 +251,24 @@ export function saveAdaptiveState(state: AdaptiveState): Promise<void> {
   );
 }
 
+export function saveAdaptiveKeyStats(
+  keyStats: AdaptiveState["keyStats"],
+  changedKeyCodes: readonly string[],
+): Promise<void> {
+  for (const keyCode of changedKeyCodes) {
+    if (!keyCode || !isKeyPracticeStats(keyStats[keyCode])) {
+      throw new TypeError(`Cannot save invalid adaptive statistics for "${keyCode}".`);
+    }
+  }
+  if (changedKeyCodes.length === 0) return Promise.resolve();
+  return withDatabaseTransaction([KEY_STATS_STORE_NAME], "readwrite", (stores, setResult) => {
+    for (const keyCode of new Set(changedKeyCodes)) {
+      stores[KEY_STATS_STORE_NAME].put({ keyCode, ...keyStats[keyCode] });
+    }
+    setResult(undefined);
+  });
+}
+
 function withStoreTransaction<T>(
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore, setResult: (value: T) => void) => void,

@@ -1,16 +1,17 @@
 import type { KeyDefinition, LanguagePack } from "../index";
 import blocklist from "./BLOCKLIST.json";
-import kidsSource from "./kids-words.json";
+import { kidsAllowlist } from "./kids-allowlist.generated";
 import words from "./words.json";
 
 const blockedWords = new Set<string>(blocklist);
+
+export const KIDS_MODE_ENABLED = false;
 
 export function filterBlockedWords(candidates: readonly string[]): string[] {
   return candidates.filter((word) => !blockedWords.has(word));
 }
 
 const filteredWords = filterBlockedWords(words);
-const filteredKidsWords = filterBlockedWords(kidsSource);
 
 const keyMap = {
   KeyQ: { code: "KeyQ", label: "Q", unshifted: "q", shifted: "Q", finger: "left-pinky", row: "top", column: 0 },
@@ -82,7 +83,9 @@ export const englishPack = {
     "Period", "Comma", "Quote", "Slash", "Semicolon",
   ],
   words: filteredWords,
-  kidsWords: filteredKidsWords,
+  kidsWords: kidsAllowlist,
+  commonWords: kidsAllowlist,
+  excludedWords: blocklist,
   wordListSource: {
     name: "Alt12Dicts 2of12full",
     url: "https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of12full.txt",
@@ -92,12 +95,12 @@ export const englishPack = {
       "Lowercase ASCII words of 2–9 characters from the source list, excluding every exact entry in BLOCKLIST.json.",
   },
   kidsWordListSource: {
-    name: "Alt12Dicts 2of4brif",
-    url: "https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of4brif.txt",
-    license: "Public domain, explicitly placed in the public domain by Alan Beale in the Alt12Dicts README.",
-    version: "2020.12.07",
+    name: "wordfreq English large wordlist",
+    url: "https://github.com/rspeer/wordfreq/blob/912caf64b657478d1dff1138efdc078947d54bb1/wordfreq/data/large_en.msgpack.gz",
+    license: "Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).",
+    version: "wordfreq 3.1.1, 2022",
     selection:
-      "Lowercase ASCII words of 2–6 characters in both the 2of4brif core list and the filtered 2of12full list, excluding every exact entry in BLOCKLIST.json.",
+      "Approximately 2,000 lowercase 2–6 letter entries in frequency order, reviewed into kids-allowlist.txt and grouped by the first unlock stage at which each word is typeable. Tier A and Tier B problem words and the project BLOCKLIST are excluded. Kids mode remains disabled pending owner approval.",
   },
   letterPatterns: {
     source: "Letter and bigram counts computed from the included Alt12Dicts 2of12full word list.",

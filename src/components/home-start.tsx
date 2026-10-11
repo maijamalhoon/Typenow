@@ -2,86 +2,105 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { STORAGE_KEYS } from "@/lib/brand";
-import { readAdaptiveState, saveAdaptiveState } from "@/lib/history";
+import { KIDS_MODE_ENABLED } from "@typenow/language-packs";
 import { getDefaultTargetWpm } from "@typenow/engine";
+import {
+  DEFAULT_ADAPTIVE_STATE,
+  readAdaptiveState,
+  readTestHistory,
+  saveAdaptiveState,
+  type AdaptiveState,
+} from "@/lib/history";
+import { STORAGE_KEYS } from "@/lib/brand";
 import { Button } from "./ui";
 
+interface HomeStatus {
+  readonly hasProgress: boolean;
+  readonly state: AdaptiveState;
+}
+
 export function HomeStart() {
+  const [status, setStatus] = useState<HomeStatus | null>(null);
   const [ageBand, setAgeBand] = useState<"standard" | "kids">("standard");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
-    const savedAgeBand = window.localStorage.getItem(STORAGE_KEYS.ageBand);
-    readAdaptiveState().then((state) => {
+    Promise.all([readAdaptiveState(), readTestHistory()]).then(([state, records]) => {
       if (!active) return;
-      const selected = savedAgeBand === "standard" || savedAgeBand === "kids"
-        ? savedAgeBand
-        : state.settings.ageBand;
+      const savedAgeBand = window.localStorage.getItem(STORAGE_KEYS.ageBand);
+      const selected = KIDS_MODE_ENABLED && savedAgeBand === "kids" ? "kids" : "standard";
       setAgeBand(selected);
-      if (!savedAgeBand) window.localStorage.setItem(STORAGE_KEYS.ageBand, selected);
-      if (selected !== state.settings.ageBand) {
-        return saveAdaptiveState({
-          ...state,
-          settings: { ...state.settings, ageBand: selected, targetWpm: getDefaultTargetWpm(selected) },
-        });
-      }
-      return undefined;
+      setStatus({
+        state,
+        hasProgress:
+          records.length > 0 ||
+          state.learnProgress.completedStages.length > 0 ||
+          Object.keys(state.keyStats).length > 0,
+      });
     }).catch((cause: unknown) => {
-      if (active) setError(cause instanceof Error ? cause.message : "Could not load typing mode.");
+      if (active) setError(cause instanceof Error ? cause.message : "Could not load local progress.");
     });
     return () => {
       active = false;
     };
   }, []);
 
+  const hasProgress = status?.hasProgress ?? false;
+  const state = status?.state ?? DEFAULT_ADAPTIVE_STATE;
+  const allLearnStagesComplete = state.learnProgress.completedStages.includes("marks");
+  const continueHref = allLearnStagesComplete
+    ? "/practice/"
+    : `/learn/?stage=${encodeURIComponent(state.learnProgress.currentStage || "home-row")}`;
+  const actionHref = hasProgress ? continueHref : "/learn/?stage=home-row";
+
   return (
     <div className="home-start">
-      <fieldset className="age-choice">
-        <legend>Typing mode</legend>
-        <div className="segmented-control">
-          <label>
-            <input
-              checked={ageBand === "standard"}
-              name="age-band"
-              onChange={() => updateAgeBand("standard")}
-              type="radio"
-              value="standard"
-            />
-            <span>Standard</span>
-          </label>
-          <label>
-            <input
-              checked={ageBand === "kids"}
-              name="age-band"
-              onChange={() => updateAgeBand("kids")}
-              type="radio"
-              value="kids"
-            />
-            <span>Kids</span>
-          </label>
-        </div>
-      </fieldset>
+      {KIDS_MODE_ENABLED && (
+        <fieldset className="age-choice">
+          <legend>Typing mode</legend>
+          <div className="segmented-control">
+            {(["standard", "kids"] as const).map((band) => (
+              <label key={band}>
+                <input
+                  checked={ageBand === band}
+                  name="age-band"
+                  onChange={() => updateAgeBand(band)}
+                  type="radio"
+                  value={band}
+                />
+                <span>{band === "kids" ? "Kids" : "Standard"}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <Button
         className="home-start__button"
+        disabled={!status}
         onClick={() => {
-          window.location.href = "/practice/";
+          window.location.href = actionHref;
         }}
       >
-        Start typing
+        {hasProgress ? "Continue" : "Start learning"}
       </Button>
+      <p className="home-action-detail">
+        {hasProgress
+          ? allLearnStagesComplete
+            ? "Adaptive Practice"
+            : `Learn · ${state.learnProgress.currentStage.replaceAll("-", " ")}`
+          : "Learn · Home row"}
+      </p>
+      {!hasProgress && (
+        <Link className="text-link" href="/test/?start=1">Check my speed · 30-second test</Link>
+      )}
       <Link className="text-link" href="/history/">Test history and backups</Link>
-      <div className="home-links">
-        <Link className="text-link" href="/learn/">Learn</Link>
-        <Link className="text-link" href="/progress/">Progress</Link>
-      </div>
-      <p className="physical-note">A physical keyboard is needed to type.</p>
       {error && <p className="history-error" role="alert">{error}</p>}
     </div>
   );
 
   function updateAgeBand(nextAgeBand: "standard" | "kids") {
+    if (!KIDS_MODE_ENABLED && nextAgeBand === "kids") return;
     setAgeBand(nextAgeBand);
     try {
       window.localStorage.setItem(STORAGE_KEYS.ageBand, nextAgeBand);
@@ -90,10 +109,10 @@ export function HomeStart() {
       return;
     }
     readAdaptiveState()
-      .then((state) => saveAdaptiveState({
-        ...state,
+      .then((current) => saveAdaptiveState({
+        ...current,
         settings: {
-          ...state.settings,
+          ...current.settings,
           ageBand: nextAgeBand,
           targetWpm: getDefaultTargetWpm(nextAgeBand),
         },

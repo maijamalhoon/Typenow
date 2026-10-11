@@ -1,16 +1,41 @@
 import { expect, test } from "@playwright/test";
 
-test("saves the age band and starts adaptive Practice", async ({ page }) => {
+test("offers Learn or a 30-second test on first visit and keeps Kids mode disabled", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("radio", { name: "Kids" }).check();
-  await page.reload();
-  await expect(page.getByRole("radio", { name: "Kids" })).toBeChecked();
+  await expect(page.getByRole("button", { name: "Start learning" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Check my speed · 30-second test" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Kids" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Test", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Design system" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Start learning" }).click();
+  await expect(page).toHaveURL(/\/learn\/\?stage=home-row$/);
+  await expect(page.getByRole("heading", { name: "Home row" })).toBeVisible();
+});
 
-  await page.getByRole("button", { name: "Start typing" }).click();
-  await expect(page).toHaveURL(/\/practice\/?$/);
-  await expect(page.getByRole("heading", { name: "Steady key practice" })).toBeVisible();
-  await expect(page.getByText(/Accuracy/)).toBeVisible();
-  await expect(page.getByLabel("Type the highlighted key")).toBeFocused();
+test("advances three Practice keys delivered within one render tick", async ({ page }) => {
+  await page.goto("/practice/");
+  const input = page.getByLabel("Type the highlighted key");
+  const text = page.locator(".typing-text--practice");
+  await expect(input).toBeFocused();
+  await page.evaluate(() => {
+    const capture = document.querySelector<HTMLInputElement>("#typing-capture-input");
+    const display = document.querySelector<HTMLElement>(".typing-text--practice");
+    if (!capture || !display) throw new Error("Practice input or text is missing.");
+    const chars = Array.from(display.querySelectorAll<HTMLElement>(".typing-character")).slice(0, 3);
+    for (const item of chars) {
+      const character = item.textContent === "\u00a0" ? " " : item.textContent ?? "";
+      const code = character === " " ? "Space" : `Key${character.toUpperCase()}`;
+      capture.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, code, key: character }));
+      capture.dispatchEvent(new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: character,
+        inputType: "insertText",
+      }));
+    }
+  });
+  await expect(text).toHaveAttribute("data-current-index", "3");
+  await expect(text.locator(".typing-character--current")).toHaveAttribute("data-character-index", "3");
 });
 
 test("ignores repeated and dead keys, blocks paste, and commits composed text once", async ({ page }) => {

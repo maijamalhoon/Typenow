@@ -10,7 +10,7 @@ import {
   generateWordPrompt,
 } from "@typenow/engine";
 import type { TestRun } from "@typenow/engine";
-import { englishPack } from "@typenow/language-packs";
+import { englishPack, KIDS_MODE_ENABLED } from "@typenow/language-packs";
 import { STORAGE_KEYS } from "@/lib/brand";
 import { saveTestHistory, type SaveHistoryResult } from "@/lib/history";
 import { TestResults, type SpeedSample, type TestHistorySaveStatus } from "./test-results";
@@ -54,7 +54,9 @@ export function TypingTest() {
 
   const startTest = useCallback((nextMode: TestMode, nextDuration: number, nextWordLimit: number) => {
     const wordCount = nextMode === "timed" ? 2_000 : nextWordLimit;
-    const target = generateWordPrompt(englishPack.words, wordCount);
+    const savedAgeBand = window.localStorage.getItem(STORAGE_KEYS.ageBand);
+    const useKidsWords = KIDS_MODE_ENABLED && savedAgeBand === "kids";
+    const target = generateWordPrompt(useKidsWords ? englishPack.kidsWords : englishPack.words, wordCount);
     const now = performance.now();
     historyRecordIdRef.current = crypto.randomUUID();
     setHistorySave({ status: "saving" });
@@ -74,7 +76,7 @@ export function TypingTest() {
 
   useEffect(() => {
     const savedAgeBand = window.localStorage.getItem(STORAGE_KEYS.ageBand);
-    if (savedAgeBand === "standard" || savedAgeBand === "kids") setAgeBand(savedAgeBand);
+    if (savedAgeBand === "standard" || savedAgeBand === "kids")     if (KIDS_MODE_ENABLED && savedAgeBand === "kids") setAgeBand("kids");
   }, []);
 
   useEffect(() => {

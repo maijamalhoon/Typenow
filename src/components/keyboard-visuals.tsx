@@ -85,9 +85,11 @@ export function HandMap({
 export function Heatmap({
   pack = englishPack,
   values = {},
+  valueFormat = "count",
 }: {
   pack?: LanguagePack;
   values?: Readonly<Record<string, number>>;
+  valueFormat?: "count" | "percent";
 }) {
   const keys: readonly KeyDefinition[] = Object.values(pack.keyMap);
   const maximum = Math.max(0, ...Object.values(values));
@@ -109,19 +111,27 @@ export function Heatmap({
             {rowKeys.map((key) => {
               const value = values[key.code];
               const level = value === undefined || maximum === 0 ? 0 : Math.ceil((value / maximum) * 6);
+              const shownValue = value === undefined
+                ? "—"
+                : valueFormat === "percent"
+                  ? `${Math.round(value * 100)}%`
+                  : String(value);
+              const describedValue = value === undefined
+                ? "no data"
+                : valueFormat === "percent"
+                  ? `${Math.round(value * 100)}% error rate`
+                  : `${value} error${value === 1 ? "" : "s"}`;
               return (
                 <span
                   aria-label={
-                    value === undefined
-                      ? `${key.label}: no data`
-                      : `${key.label}: ${value} error${value === 1 ? "" : "s"}, ${key.finger.replace("-", " ")} finger, ${key.row} row`
+                    `${key.label}: ${describedValue}, ${key.finger.replace("-", " ")} finger, ${key.row} row`
                   }
                   className={`keycap heat-key heat-key--${level} ${key.row === "space" ? "keycap--space" : ""}`}
                   key={key.code}
                   role="img"
                 >
                   <span>{key.label}</span>
-                  <small>{value ?? "—"}</small>
+                  <small>{shownValue}</small>
                 </span>
               );
             })}

@@ -12,6 +12,7 @@ import {
   openTestHistoryDatabase,
   readTestHistory,
   readAdaptiveState,
+  saveAdaptiveKeyStats,
   saveAdaptiveState,
   saveTestHistory,
   type TestHistoryEntry,
@@ -91,6 +92,21 @@ describe("IndexedDB test history", () => {
     });
     await importTestHistory(updatedBackup);
     expect((await readTestHistory()).find(({ id }) => id === "first")?.metrics.netWpm).toBe(44);
+  });
+
+  it("writes only the changed adaptive keys without clearing other key records", async () => {
+    const initial = await readAdaptiveState();
+    const keyStats = {
+      KeyA: { attempts: 2, errors: 0, smoothedTimeMs: 250, lastPracticedAt: 1 },
+      KeyS: { attempts: 1, errors: 1, smoothedTimeMs: null, lastPracticedAt: 2 },
+    };
+    await saveAdaptiveState({ ...initial, keyStats });
+    const updated = {
+      ...keyStats,
+      KeyA: { attempts: 3, errors: 0, smoothedTimeMs: 240, lastPracticedAt: 3 },
+    };
+    await saveAdaptiveKeyStats(updated, ["KeyA"]);
+    expect((await readAdaptiveState()).keyStats).toEqual(updated);
   });
 
   it("rejects malformed or unsupported imports before writing any records", async () => {

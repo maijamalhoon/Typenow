@@ -1,41 +1,67 @@
-English word-list data
-======================
-
-The Type now English language pack contains selections derived from the
-Alt12Dicts word-list package, version 2020.12.07, by Alan Beale and packaged
-by Kevin Atkinson:
-
-  https://github.com/en-wl/wordlist/tree/v1/alt12dicts
-
-The Alt12Dicts README states:
-
-  "All of these files have been explicitly placed in the Public Domain by
-  Alan Beale."
-
-This is the source's stated rights dedication; the source does not name a
-separate SPDX identifier or attach additional license terms.
+English vocabulary
+==================
 
 Standard vocabulary
 -------------------
 
-Source: alt12dicts/2of12full.txt
-  https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of12full.txt
-Included filtered data: packages/language-packs/src/en/words.json
-Selection: lowercase ASCII entries of 2–9 letters. Exact entries listed in
-packages/language-packs/src/en/BLOCKLIST.json are excluded at runtime.
+Source: Alt12Dicts 2of12full.txt, version 2020.12.07, by Alan Beale,
+packaged by Kevin Atkinson:
+https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of12full.txt
 
-Kids vocabulary
----------------
+The upstream Alt12Dicts README states: "All of these files have been
+explicitly placed in the Public Domain by Alan Beale." This is the source's
+stated rights dedication; the source does not name a separate SPDX identifier
+or attach additional license terms.
 
-Source: alt12dicts/2of4brif.txt
-  https://github.com/en-wl/wordlist/blob/v1/alt12dicts/2of4brif.txt
-Included source copy: packages/language-packs/src/en/2of4brif-source.txt
-Included filtered data: packages/language-packs/src/en/kids-words.json
-Selection: lowercase ASCII entries of 2–6 letters also present in the
-standard 2of12full selection. Exact entries listed in
-packages/language-packs/src/en/BLOCKLIST.json are excluded at runtime.
+The included Standard data is `packages/language-packs/src/en/words.json`.
+It contains lowercase ASCII entries of 2–9 letters. Entries in
+`packages/language-packs/src/en/BLOCKLIST.json` are removed. That blocklist
+includes the Kids Tier A exclusions recorded in
+`packages/language-packs/src/en/kids-list-problem-words.txt`. Standard
+letter-pattern statistics are calculated from the resulting word list.
 
-The same Alt12Dicts Public Domain dedication applies to both source files.
-Letter and bigram statistics are computed from the filtered standard
-vocabulary. The blocklist is editorial filtering maintained by this project;
-it does not change the source's rights status.
+Kids allowlist
+--------------
+
+Frequency source: `large_en.msgpack.gz` from wordfreq, snapshot commit
+`912caf64b657478d1dff1138efdc078947d54bb1`, by Robyn Speer:
+https://github.com/rspeer/wordfreq/blob/912caf64b657478d1dff1138efdc078947d54bb1/wordfreq/data/large_en.msgpack.gz
+Upstream attribution and license notice:
+https://github.com/rspeer/wordfreq/blob/912caf64b657478d1dff1138efdc078947d54bb1/NOTICE.md
+
+The upstream notice records the data license as: "redistributed under a
+Creative Commons Attribution-ShareAlike 4.0 license
+(https://creativecommons.org/licenses/by-sa/4.0/)." The applicable license is
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0);
+the canonical license text is at
+https://creativecommons.org/licenses/by-sa/4.0/legalcode.
+Attribution: wordfreq, Copyright 2022 Robyn Speer. The frequency data includes
+data derived from Google Books Ngrams, Google Books Syntactic Ngrams, the Leeds
+Internet Corpus, Wikipedia, ParaCrawl, OpenSubtitles 2018, and SUBTLEX lists;
+their source-specific notices and attribution conditions are described in
+wordfreq's upstream NOTICE.md. Google Books Ngrams source:
+http://books.google.com/ngrams.
+
+`packages/language-packs/src/en/kids-allowlist.txt` is a project-curated
+selection, not a copy of the full source. It contains 2,000 lowercase ASCII
+words of 2–6 letters, in approximate frequency order, grouped under the first
+English unlock stage where all letters in each word are available. Selection
+starts with the frequency-ordered source list and retains only words also
+present in the filtered Standard list. Both tiers in
+`kids-list-problem-words.txt` are excluded from Kids. Tier A is also removed
+from Standard through `BLOCKLIST.json`; Tier B is not allowed in Kids unless
+the product owner approves it. No runtime blocklist filtering is used to
+construct Kids prompts: the Kids vocabulary is exactly this plain-text
+allowlist. Its generated TypeScript copy is checked against that file by tests.
+The selected data and any adapted selection are distributed under CC BY-SA 4.0
+as required by the source license.
+
+Kids mode is feature-flagged off (`KIDS_MODE_ENABLED = false`) until the
+allowlist is explicitly approved.
+
+Font licenses
+-------------
+
+The self-hosted Source Sans 3 and Atkinson Hyperlegible fonts are distributed
+with their respective OFL license texts next to the font files in
+`public/fonts`.

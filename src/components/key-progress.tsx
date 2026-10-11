@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { englishPack } from "@typenow/language-packs";
-import { getKeyErrorRate, getKeyTimeBudgetMs, getUnlockedKeys } from "@typenow/engine";
+import {
+  getKeyErrorRate,
+  getKeyProgressStatus,
+  getKeyTimeBudgetMs,
+} from "@typenow/engine";
 import { DEFAULT_ADAPTIVE_STATE, readAdaptiveState, type AdaptiveState } from "@/lib/history";
 import { Heatmap } from "./keyboard-visuals";
 
@@ -16,9 +20,11 @@ export function KeyProgress() {
     });
   }, []);
 
-  const unlocked = getUnlockedKeys(englishPack, state.keyStats, state.settings.targetWpm);
   const budget = getKeyTimeBudgetMs(state.settings.targetWpm);
-  const errors = Object.fromEntries(Object.entries(state.keyStats).map(([code, stats]) => [code, stats.errors]));
+  const errorRates = Object.fromEntries(
+    Object.entries(state.keyStats).map(([code, stats]) => [code, getKeyErrorRate(stats)]),
+  );
+  const now = Date.now();
 
   return (
     <section aria-labelledby="progress-heading" className="learn-path">
@@ -27,22 +33,22 @@ export function KeyProgress() {
         <Link className="text-link" href="/learn/">Learn path</Link>
       </div>
       <p className="progress-description">
-        The number on each key is its recorded error count. The single-hue scale shows lower to higher counts.
+        Each key shows its error rate. The single-hue scale shows lower to higher rates.
       </p>
-      <div className="progress-keyboard"><Heatmap pack={englishPack} values={errors} /></div>
+      <div className="progress-keyboard"><Heatmap pack={englishPack} valueFormat="percent" values={errorRates} /></div>
       <div className="history-table-wrap">
         <table className="history-table">
-          <thead><tr><th scope="col">Key</th><th scope="col">Status</th><th scope="col">Samples</th><th scope="col">Accuracy</th><th scope="col">Typical time</th></tr></thead>
+          <thead><tr><th scope="col">Key</th><th scope="col">Status</th><th scope="col">Samples</th><th scope="col">Error rate</th><th scope="col">Typical time</th></tr></thead>
           <tbody>
             {englishPack.unlockOrder.map((code) => {
               const stats = state.keyStats[code];
-              const accurate = stats ? Math.round((1 - getKeyErrorRate(stats)) * 100) : 0;
+              const status = getKeyProgressStatus(stats, state.settings.targetWpm, now);
               return (
                 <tr key={code}>
                   <th scope="row">{englishPack.keyMap[code].label}</th>
-                  <td>{unlocked.includes(code) ? "Unlocked" : "Locked"}</td>
+                  <td>{status === "needs review" ? "Needs review" : status[0].toUpperCase() + status.slice(1)}</td>
                   <td>{stats?.attempts ?? 0}</td>
-                  <td>{stats ? `${accurate}%` : "—"}</td>
+                  <td>{stats ? `${Math.round(getKeyErrorRate(stats) * 100)}%` : "—"}</td>
                   <td>{stats?.smoothedTimeMs == null ? "—" : `${Math.round(stats.smoothedTimeMs)} ms / ${Math.round(budget)} ms target`}</td>
                 </tr>
               );

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild": "npm --workspace @typenow/language-packs run pretest",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:engine && npm run test:language-packs && npm run test:app",
     "test:app": "vitest run src",

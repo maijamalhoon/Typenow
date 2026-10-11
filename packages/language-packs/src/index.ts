@@ -46,6 +46,8 @@ export interface LanguagePack {
   readonly unlockOrder: readonly string[];
   readonly words: readonly string[];
   readonly kidsWords: readonly string[];
+  readonly commonWords: readonly string[];
+  readonly excludedWords: readonly string[];
   readonly wordListSource: {
     readonly name: string;
     readonly url: string;
@@ -64,4 +66,4 @@ export interface LanguagePack {
   readonly strings: Readonly<Record<string, string>>;
 }
 
-export { englishKeys, englishPack, filterBlockedWords } from "./en";
+export { englishKeys, englishPack, filterBlockedWords, KIDS_MODE_ENABLED } from "./en";

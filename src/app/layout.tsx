@@ -35,8 +35,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               {PRODUCT_NAME}
             </Link>
             <nav aria-label="Primary">
+              <Link className="header-link" href="/learn/">Learn</Link>
+              <Link className="header-link" href="/practice/">Practice</Link>
+              <Link className="header-link" href="/test/">Test</Link>
+              <Link className="header-link" href="/progress/">Progress</Link>
               <Link className="header-link" href="/history/">History</Link>
-              <Link className="header-link" href="/design-system/">Design system</Link>
             </nav>
           </header>
           <main>{children}</main>

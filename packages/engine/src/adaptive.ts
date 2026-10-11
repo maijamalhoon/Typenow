@@ -13,6 +13,8 @@ export const ADAPTIVE_DEFAULTS = {
   maximumErrorRate: 0.05,
   /** The complete first row is the usable baseline; later rows unlock sequentially. */
   initiallyUnlockedKeyCount: 9,
+  /** Keystroke gaps longer than this are not representative typing-time samples. */
+  maximumSampleGapMs: 3_000,
   /** Fraction of Standard practice words in which the current weakest key is forced. */
   weakestKeyWordProbability: 0.7,
   /** Shortest generated Standard pseudo-word, in user-perceived letters. */
@@ -44,6 +46,7 @@ export interface AdaptiveLanguagePack {
   readonly unlockOrder: readonly string[];
   readonly words: readonly string[];
   readonly kidsWords: readonly string[];
+  readonly excludedWords?: readonly string[];
   readonly letterPatterns: {
     readonly frequencies: Readonly<Record<string, number>>;
     readonly bigrams: Readonly<Record<string, number>>;
@@ -56,6 +59,8 @@ export interface KeyPracticeStats {
   readonly smoothedTimeMs: number | null;
   readonly lastPracticedAt: number;
 }
+
+export type KeyProgressStatus = "new" | "learning" | "confident" | "needs review";
 
 export type PerKeyStats = Readonly<Record<string, KeyPracticeStats>>;
 
@@ -72,16 +77,28 @@ export function getKeyTimeBudgetMs(
   return 60_000 / (targetWpm * 5);
 }
 
+export function getPracticeTimeSample(
+  previousCorrectAtMs: number | null,
+  currentTimestampMs: number,
+  correct: boolean,
+): number | null {
+  assertNonNegativeFinite(currentTimestampMs, "Current key timestamp");
+  if (previousCorrectAtMs === null || !correct) return null;
+  assertNonNegativeFinite(previousCorrectAtMs, "Previous correct key timestamp");
+  const elapsed = Math.max(0, currentTimestampMs - previousCorrectAtMs);
+  return elapsed > ADAPTIVE_DEFAULTS.maximumSampleGapMs ? null : elapsed;
+}
+
 export function recordKeyAttempt(
   stats: PerKeyStats,
   keyCode: string,
-  elapsedMs: number,
+  elapsedMs: number | null,
   correct: boolean,
   timestampMs: number,
   smoothingAlpha = ADAPTIVE_DEFAULTS.timeSmoothingAlpha,
 ): PerKeyStats {
   if (!keyCode) throw new TypeError("A key code is required to record practice.");
-  assertNonNegativeFinite(elapsedMs, "Key time");
+  if (elapsedMs !== null) assertNonNegativeFinite(elapsedMs, "Key time");
   assertNonNegativeFinite(timestampMs, "Practice timestamp");
   if (typeof correct !== "boolean") throw new TypeError("Key correctness must be a boolean.");
   if (!Number.isFinite(smoothingAlpha) || smoothingAlpha <= 0 || smoothingAlpha > 1) {
@@ -89,8 +106,9 @@ export function recordKeyAttempt(
   }
 
   const previous = stats[keyCode];
-  const smoothedTimeMs =
-    previous?.smoothedTimeMs === null || previous?.smoothedTimeMs === undefined
+  const smoothedTimeMs = elapsedMs === null
+    ? previous?.smoothedTimeMs ?? null
+    : previous?.smoothedTimeMs === null || previous?.smoothedTimeMs === undefined
       ? elapsedMs
       : previous.smoothedTimeMs * (1 - smoothingAlpha) + elapsedMs * smoothingAlpha;
 
@@ -132,6 +150,17 @@ export function isKeyConfident(
   );
 }
 
+export function getKeyProgressStatus(
+  stats: KeyPracticeStats | undefined,
+  targetWpm: number,
+  nowMs: number,
+): KeyProgressStatus {
+  assertNonNegativeFinite(nowMs, "Current time");
+  if (!stats || stats.attempts === 0) return "new";
+  if (nowMs - stats.lastPracticedAt >= ADAPTIVE_DEFAULTS.staleKeyAfterMs) return "needs review";
+  return isKeyConfident(stats, targetWpm) ? "confident" : "learning";
+}
+
 export function getUnlockedKeys(
   pack: AdaptiveLanguagePack,
   stats: PerKeyStats,
@@ -156,9 +185,10 @@ export function selectWeakestKey(
   stats: PerKeyStats,
   targetWpm: number = ADAPTIVE_DEFAULTS.standardTargetWpm,
 ): string {
-  if (unlockedKeys.length === 0) throw new RangeError("At least one key must be unlocked.");
+  const letterKeys = unlockedKeys.filter((keyCode) => /^Key[a-z]$/i.test(keyCode));
+  if (letterKeys.length === 0) throw new RangeError("At least one unlocked letter key is required.");
   const timeBudget = getKeyTimeBudgetMs(targetWpm);
-  return unlockedKeys.reduce((weakest, candidate) => {
+  return letterKeys.reduce((weakest, candidate) => {
     const candidateStats = stats[candidate];
     const weakestStats = stats[weakest];
     const candidateScore = weaknessScore(candidateStats, timeBudget);
@@ -219,43 +249,48 @@ export function generateMadeUpWord(
   if (!availableLetters.includes(weakestLetter)) {
     throw new RangeError("The weakest key must be among the unlocked letter keys.");
   }
-  const length =
-    ADAPTIVE_DEFAULTS.minimumGeneratedWordLength +
-    Math.floor(
-      nextRandom(random) *
-        (ADAPTIVE_DEFAULTS.maximumGeneratedWordLength -
-          ADAPTIVE_DEFAULTS.minimumGeneratedWordLength +
-          1),
-    );
-  const forceWeakest =
-    nextRandom(random) < ADAPTIVE_DEFAULTS.weakestKeyWordProbability;
-  const forcedIndex = forceWeakest ? Math.floor(nextRandom(random) * length) : -1;
-  const letters: string[] = [];
+  const excludedWords = new Set(pack.excludedWords ?? []);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const length =
+      ADAPTIVE_DEFAULTS.minimumGeneratedWordLength +
+      Math.floor(
+        nextRandom(random) *
+          (ADAPTIVE_DEFAULTS.maximumGeneratedWordLength -
+            ADAPTIVE_DEFAULTS.minimumGeneratedWordLength +
+            1),
+      );
+    const forceWeakest =
+      nextRandom(random) < ADAPTIVE_DEFAULTS.weakestKeyWordProbability;
+    const forcedIndex = forceWeakest ? Math.floor(nextRandom(random) * length) : -1;
+    const letters: string[] = [];
 
-  for (let index = 0; index < length; index += 1) {
-    if (index === forcedIndex) {
-      letters.push(weakestLetter);
-    } else if (index === 0) {
-      letters.push(weightedLetter(availableLetters, pack.letterPatterns.frequencies, random));
-    } else {
-      const previousLetter = letters[index - 1];
-      const bigramWeights = Object.fromEntries(
-        availableLetters.map((letter) => [
-          letter,
-          pack.letterPatterns.bigrams[`${previousLetter}${letter}`] ?? 0,
-        ]),
-      );
-      const hasBigramData = Object.values(bigramWeights).some((weight) => weight > 0);
-      letters.push(
-        weightedLetter(
-          availableLetters,
-          hasBigramData ? bigramWeights : pack.letterPatterns.frequencies,
-          random,
-        ),
-      );
+    for (let index = 0; index < length; index += 1) {
+      if (index === forcedIndex) {
+        letters.push(weakestLetter);
+      } else if (index === 0) {
+        letters.push(weightedLetter(availableLetters, pack.letterPatterns.frequencies, random));
+      } else {
+        const previousLetter = letters[index - 1];
+        const bigramWeights = Object.fromEntries(
+          availableLetters.map((letter) => [
+            letter,
+            pack.letterPatterns.bigrams[`${previousLetter}${letter}`] ?? 0,
+          ]),
+        );
+        const hasBigramData = Object.values(bigramWeights).some((weight) => weight > 0);
+        letters.push(
+          weightedLetter(
+            availableLetters,
+            hasBigramData ? bigramWeights : pack.letterPatterns.frequencies,
+            random,
+          ),
+        );
+      }
     }
+    const word = letters.join("");
+    if (!excludedWords.has(word)) return word;
   }
-  return letters.join("");
+  throw new RangeError("Unable to generate a Standard word that passes the language-pack exclusions.");
 }
 
 export function generatePracticePrompt(

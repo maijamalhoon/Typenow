@@ -7,7 +7,9 @@ import {
   generatePracticePrompt,
   getDefaultTargetWpm,
   getKeyErrorRate,
+  getKeyProgressStatus,
   getKeyTimeBudgetMs,
+  getPracticeTimeSample,
   getLessonCheckpoint,
   getStaleReviewKeys,
   getUnlockedKeys,
@@ -37,6 +39,14 @@ describe("adaptive typing engine", () => {
     expect(getDefaultTargetWpm("kids")).toBe(15);
   });
 
+  it("starts time samples at a previous correct key, resets after pauses, and drops long gaps", () => {
+    expect(getPracticeTimeSample(null, 100, true)).toBeNull();
+    expect(getPracticeTimeSample(100, 350, true)).toBe(250);
+    expect(getPracticeTimeSample(100, 350, false)).toBeNull();
+    expect(getPracticeTimeSample(100, 3_101, true)).toBeNull();
+    expect(ADAPTIVE_DEFAULTS.maximumSampleGapMs).toBe(3_000);
+  });
+
   it("smooths per-key time samples and tracks errors and last practice time", () => {
     let stats: PerKeyStats = {};
     stats = recordKeyAttempt(stats, "KeyF", 500, true, 1_000);
@@ -48,6 +58,21 @@ describe("adaptive typing engine", () => {
       lastPracticedAt: 2_000,
     });
     expect(getKeyErrorRate(stats.KeyF)).toBe(0.5);
+  });
+
+  it("records misses against the intended key without inventing a time sample", () => {
+    const withMiss = recordKeyAttempt({}, "KeyF", null, false, 1_000);
+    expect(withMiss.KeyF).toEqual({
+      attempts: 1,
+      errors: 1,
+      smoothedTimeMs: null,
+      lastPracticedAt: 1_000,
+    });
+    expect(recordKeyAttempt(withMiss, "KeyF", 350, true, 1_500).KeyF).toMatchObject({
+      attempts: 2,
+      errors: 1,
+      smoothedTimeMs: 350,
+    });
   });
 
   it("requires the minimum sample count, target-time budget, and low error rate for confidence", () => {
@@ -72,6 +97,15 @@ describe("adaptive typing engine", () => {
     expect(isKeyConfident(tooManyErrors.KeyK, 30)).toBe(false);
   });
 
+  it("classifies per-key status as new, learning, confident, or due for review", () => {
+    const confident = buildConfidentStats(["KeyF"], 350).KeyF;
+    expect(getKeyProgressStatus(undefined, 30, 100_000)).toBe("new");
+    expect(getKeyProgressStatus({ ...confident, attempts: 0 }, 30, 100_000)).toBe("new");
+    expect(getKeyProgressStatus({ ...confident, attempts: 2 }, 30, 100_000)).toBe("learning");
+    expect(getKeyProgressStatus(confident, 30, 100_000)).toBe("confident");
+    expect(getKeyProgressStatus(confident, 30, 100_000 + ADAPTIVE_DEFAULTS.staleKeyAfterMs)).toBe("needs review");
+  });
+
   it("unlocks keys strictly in language-pack order only after all unlocked keys are confident", () => {
     let stats = buildConfidentStats(englishPack.unlockOrder.slice(0, 9));
     expect(getUnlockedKeys(englishPack, {}, 30)).toEqual(englishPack.unlockOrder.slice(0, 9));
@@ -90,6 +124,15 @@ describe("adaptive typing engine", () => {
       KeyD: { attempts: 8, errors: 0, smoothedTimeMs: 3_000, lastPracticedAt: 1 },
     };
     expect(selectWeakestKey(["KeyF", "KeyJ", "KeyD"], stats, 30)).toBe("KeyD");
+  });
+
+  it("ignores Space when selecting the weakest key", () => {
+    const stats = {
+      Space: { attempts: 8, errors: 0, smoothedTimeMs: 10_000, lastPracticedAt: 1 },
+      KeyF: { attempts: 8, errors: 0, smoothedTimeMs: 350, lastPracticedAt: 1 },
+    };
+    expect(selectWeakestKey(["Space", "KeyF"], stats, 30)).toBe("KeyF");
+    expect(() => selectWeakestKey(["Space"], stats, 30)).toThrow("unlocked letter key");
   });
 
   it("creates repeatable seeded prompts and forces the weakest key into most Standard words", () => {
@@ -112,6 +155,18 @@ describe("adaptive typing engine", () => {
     expect(words.every((word) => word.length >= 3 && word.length <= 6)).toBe(true);
   });
 
+  it("never returns a made-up word from the language pack exclusion list", () => {
+    const excluded = new Set<string>(englishPack.excludedWords);
+    const prompt = generatePracticePrompt(
+      englishPack,
+      englishPack.unlockOrder.slice(0, 9),
+      "standard",
+      createSeededRandom("excluded-word-regression"),
+      { weakestKeyCode: "KeyD", wordCount: 1_000 },
+    );
+    expect(prompt.split(" ").some((word) => excluded.has(word))).toBe(false);
+  });
+
   it("uses only unlocked real words in Kids practice", () => {
     const unlocked = englishPack.unlockOrder.slice(0, 9);
     const prompt = generatePracticePrompt(englishPack, unlocked, "kids", createSeededRandom(7), {
@@ -120,7 +175,8 @@ describe("adaptive typing engine", () => {
     const words = prompt.split(" ");
     const unlockedLetters = new Set<string>(unlocked.map((code) => englishPack.keyMap[code].unshifted));
     expect(words).toHaveLength(40);
-    expect(words.every((word) => englishPack.kidsWords.includes(word))).toBe(true);
+    const allowlist = new Set<string>(englishPack.kidsWords);
+    expect(words.every((word) => allowlist.has(word))).toBe(true);
     expect(words.every((word) => [...word].every((letter) => unlockedLetters.has(letter)))).toBe(true);
   });
 

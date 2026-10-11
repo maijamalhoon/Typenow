@@ -8,6 +8,7 @@
     "./en": "./src/en/index.ts"
   },
   "scripts": {
+    "pretest": "node scripts/generate-kids-allowlist.mjs",
     "test": "vitest run src"
   }
 }

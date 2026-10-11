@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { englishPack, type LanguagePack } from "@typenow/language-packs";
+import { KIDS_MODE_ENABLED } from "@typenow/language-packs";
 import {
   createLessonRun,
   getLessonCheckpoint,
@@ -17,6 +18,7 @@ import {
   type AdaptiveState,
 } from "@/lib/history";
 import { STORAGE_KEYS } from "@/lib/brand";
+import { createWordPracticeTarget } from "@/lib/lesson-content";
 import { Button } from "./ui";
 import { HandMap, KeyboardMap } from "./keyboard-visuals";
 import { TypingCapture } from "./typing-capture";
@@ -52,33 +54,12 @@ function createStages(): LessonStage[] {
 const stages = createStages();
 
 function stageTarget(stage: LessonStage, shifted = false): string {
-  if (stage.id === "space") {
-    const readableWords = pack.kidsWords.filter((word) => word.length >= 2).slice(0, 8);
-    return `${readableWords.join(" ")} ${readableWords.join(" ")}`;
-  }
   const characters = stage.keys.map((code) => {
     const key = pack.keyMap[code];
     if (stage.id === "marks" && code === "Slash") return key.shifted ?? key.unshifted;
     return shifted ? key.shifted ?? key.unshifted.toUpperCase() : key.unshifted;
   });
   return [...characters, ...characters].join("");
-}
-
-function wordPracticeTarget(stage: LessonStage, ageBand: "standard" | "kids"): string {
-  const stageEnd = pack.unlockOrder.indexOf(stage.keys[stage.keys.length - 1]);
-  const availableLetters = new Set(
-    pack.unlockOrder
-      .slice(0, stageEnd + 1)
-      .map((code) => pack.keyMap[code].unshifted)
-      .filter((character) => /^[a-z]$/.test(character)),
-  );
-  const sourceWords = ageBand === "kids" ? pack.kidsWords : pack.words;
-  const words = sourceWords
-    .filter((word) => Array.from(word).every((letter) => availableLetters.has(letter)))
-    .slice(0, 8);
-  if (words.length === 0) return stageTarget(stage);
-  const list = words.join(" ");
-  return `${list} ${list}`;
 }
 
 function keyCodeFor(character: string): string | undefined {
@@ -95,15 +76,30 @@ export function LearnCenter() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [lessonPaused, setLessonPaused] = useState(false);
-  const ageBand = state.settings.ageBand;
+  const typingDisplayRef = useRef<HTMLDivElement>(null);
+  const pendingTypingTimestamp = useRef<number | null>(null);
+  const commitSequence = useRef(0);
+  const ageBand = KIDS_MODE_ENABLED && state.settings.ageBand === "kids" ? "kids" : "standard";
+  const randomSequence = useRef(0);
+
+  const nextLessonSeed = () => `learn-${Date.now()}-${randomSequence.current++}`;
 
   useEffect(() => {
     let active = true;
     readAdaptiveState().then((saved) => {
       if (!active) return;
       const preference = window.localStorage.getItem(STORAGE_KEYS.ageBand);
-      const ageBand = preference === "kids" || preference === "standard" ? preference : saved.settings.ageBand;
+      const ageBand = KIDS_MODE_ENABLED && preference === "kids" ? "kids" : "standard";
       setState({ ...saved, settings: { ...saved.settings, ageBand } });
+      const requestedStage = new URLSearchParams(window.location.search).get("stage");
+      if (requestedStage && stages.some(({ id }) => id === requestedStage)) {
+        const requestedIndex = stages.findIndex(({ id }) => id === requestedStage);
+        const savedIndex = stages.findIndex(({ id }) => id === saved.learnProgress.currentStage);
+        if (requestedIndex <= Math.max(0, savedIndex)) {
+          setStageId(requestedStage);
+          setPhase("intro");
+        }
+      }
     }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Could not load Learn progress."));
     return () => {
       active = false;
@@ -117,6 +113,23 @@ export function LearnCenter() {
   const currentCharacter = selectedRun?.target[selectedRun.cursor];
   const nextCode = currentCharacter ? keyCodeFor(currentCharacter) : undefined;
 
+  useLayoutEffect(() => {
+    const timestamp = pendingTypingTimestamp.current;
+    const element = typingDisplayRef.current;
+    if (timestamp === null || !element) return;
+    element.dataset.currentIndex = String(run?.cursor ?? 0);
+    element.dataset.commitIndex = String(run?.cursor ?? 0);
+    element.dataset.commitSequence = String(++commitSequence.current);
+    element.dataset.keypressTimestamp = String(timestamp);
+    element.dataset.lastCommitMs = (performance.now() - timestamp).toFixed(2);
+    const frame = requestAnimationFrame(() => {
+      if (!typingDisplayRef.current) return;
+      typingDisplayRef.current.dataset.lastPaintMs = (performance.now() - timestamp).toFixed(2);
+      pendingTypingTimestamp.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [phase, run]);
+
   const startStage = (selected: LessonStage) => {
     setStageId(selected.id);
     setRun(null);
@@ -126,21 +139,39 @@ export function LearnCenter() {
     setLessonPaused(false);
   };
 
-  const submitCharacter = useCallback((character: string) => {
+  const submitCharacter = useCallback((character: string, timestamp: number) => {
     if (!run || !stage || (phase !== "guided" && phase !== "word-practice" && phase !== "checkpoint")) return;
+    pendingTypingTimestamp.current = timestamp;
     const updated = submitLessonCharacter(run, character);
     setRun(updated);
     setMessage(updated.lastAttemptCorrect === false ? "Not that key. The current key stays highlighted." : "");
     if (updated.cursor !== updated.target.length) return;
     if (phase === "guided") {
-      setRun(createLessonRun(wordPracticeTarget(stage, ageBand), ageBand));
-      setPhase("word-practice");
+      try {
+        setRun(createLessonRun(
+          createWordPracticeTarget(pack, stage.keys, ageBand, 30, nextLessonSeed()),
+          ageBand,
+        ));
+        setPhase("word-practice");
+      } catch (cause) {
+        setRun(run);
+        setError(cause instanceof Error ? cause.message : "Could not create lesson words.");
+        return;
+      }
       setMessage("");
       return;
     }
     if (phase === "word-practice") {
-      setRun(createLessonRun(stageTarget(stage, stage.id === "capitals"), ageBand));
-      setPhase("checkpoint");
+      try {
+        setRun(createLessonRun(
+          createWordPracticeTarget(pack, stage.keys, ageBand, 40, nextLessonSeed()),
+          ageBand,
+        ));
+        setPhase("checkpoint");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not create a checkpoint.");
+        return;
+      }
       setMessage("");
       return;
     }
@@ -182,7 +213,18 @@ export function LearnCenter() {
           <div className="lesson-panel">
             <p>Use the highlighted fingers and let the speed come later.</p>
             <HandMap highlightedCodes={stage.keys} pack={pack} />
-            <Button onClick={() => { setRun(createLessonRun(stageTarget(stage, stage.id === "capitals"), ageBand)); setPhase("guided"); }}>Begin guided drill</Button>
+            <Button onClick={() => {
+              try {
+                const target = stage.id === "space"
+                  ? createWordPracticeTarget(pack, stage.keys, ageBand, 30, nextLessonSeed())
+                  : stageTarget(stage, stage.id === "capitals");
+                setRun(createLessonRun(target, ageBand));
+                setPhase("guided");
+                setError("");
+              } catch (cause) {
+                setError(cause instanceof Error ? cause.message : "Could not create the lesson drill.");
+              }
+            }}>Begin guided drill</Button>
           </div>
         )}
         {(phase === "guided" || phase === "word-practice" || phase === "checkpoint") && run && (
@@ -190,7 +232,14 @@ export function LearnCenter() {
             <p>{phase === "guided" ? "Guided drill" : phase === "word-practice" ? "Word practice" : "Checkpoint"} · {run.cursor} / {run.target.length}</p>
             {stage.id === "capitals" && <p>Hold Shift while typing the highlighted letter.</p>}
             {stage.id === "marks" && <p>Hold Shift for the question mark.</p>}
-            <div aria-hidden="true" className="typing-text typing-text--practice">
+            <div
+              aria-hidden="true"
+              className="typing-text typing-text--practice"
+              data-current-index={run.cursor}
+              data-commit-index={run.cursor}
+              data-commit-sequence="0"
+              ref={typingDisplayRef}
+            >
               {run.target.map((character, index) => (
                 <TypingCharacter
                   character={character}
@@ -210,7 +259,7 @@ export function LearnCenter() {
               allowBackspace={false}
               inputLabel="Type the highlighted key"
               onBackspace={() => {}}
-              onCharacter={(character) => submitCharacter(character)}
+              onCharacter={(character, _code, timestamp) => submitCharacter(character, timestamp)}
               onPause={() => setLessonPaused(true)}
               paused={lessonPaused}
             />
@@ -250,11 +299,14 @@ export function LearnCenter() {
           const complete = state.learnProgress.completedStages.includes(item.id);
           const current = index === currentIndex;
           const locked = index > currentIndex;
+          const unlockRequirement = stages[index - 1]?.title ?? stages[currentIndex]?.title ?? "the previous stage";
           return (
             <li className={`stage-item ${complete ? "stage-item--complete" : ""}`} key={item.id}>
               <span aria-hidden="true" className="stage-marker">{index + 1}</span>
               <div><h2>{item.title}</h2><p>{item.keys.map((code) => item.id === "marks" && code === "Slash" ? pack.keyMap[code].shifted : pack.keyMap[code].label).join(" · ")}</p></div>
-              <span className="stage-state">{complete ? "Completed" : current ? "Current" : "Locked"}</span>
+              <span className="stage-state">
+                {complete ? "Completed" : current ? "Current" : `Locked · Finish ${unlockRequirement} first`}
+              </span>
               {!locked && (
                 <Button onClick={() => startStage(item)} variant={current ? "primary" : "secondary"}>
                   {complete ? "Review" : "Start lesson"}
